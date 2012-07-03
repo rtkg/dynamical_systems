@@ -6,15 +6,13 @@ int main(int argc, char **argv)
 
   USING_NAMESPACE_ACADO
 
-    //LOAD DEMONSTRATION
-    //==================
+  //LOAD DEMONSTRATION
+  //==================
   
-   VariablesGrid demonstration("demonstrations/FFJ3_tripod_small_closed.txt"); //load a demonstration with columns for q, qd & qdd
-   demonstration = demonstration(0); //take only the position values q
+  VariablesGrid measurements("demonstrations/FFJ3_tripod_small_closed.txt"); //load a demonstration with columns for q, qd & qdd
 
-   demonstration.print();
-
-   std::cout<<demonstration.getLastVector()(0)<<std::endl;
+  VariablesGrid demonstration = measurements(0);
+  demonstration.appendValues(measurements(1)); //use q and qd
 
   //DEFINE VARIABLES
   //================
@@ -31,14 +29,19 @@ int main(int argc, char **argv)
   //============================
 
    DifferentialEquation f;
-   f << dot(z) == a_z/Tau*(b_z*(g-y)-z);
-   f << dot(y) == z/Tau;
+   f << dot(z) == a_z*(b_z*(g-y)-z);  
+   f << dot(y) == z; 
+
+//division by Tau blows optimization up
+//  f << dot(z) == a_z/Tau*(b_z*(g-y)-z);
+//  f << dot(y) == z/Tau 
 
   //DEFINE MEASUREMENT FUNCTION
   //===========================
 
    Function h;
    h << y;
+   h << z;
 
   //DEFINE PARAMETER ESTIMATION PROBLEM
   //===================================
@@ -47,8 +50,9 @@ int main(int argc, char **argv)
    ocp.minimizeLSQ(h,demonstration);
 
    ocp.subjectTo(f);
-   ocp.subjectTo( g == demonstration.getLastVector()(0));
    ocp.subjectTo( Tau == demonstration.getTimePoints().getLastTime());
+   ocp.subjectTo( g == demonstration.getLastVector()(0));
+   
    
   // //SETUP A PLOT WINDOW
   // //===================
@@ -58,8 +62,9 @@ int main(int argc, char **argv)
    GnuplotWindow window(PLOT_NEVER);
    window.addSubplot(y, "y","time [s]", "angle [deg]");
    window.addSubplot(z, "z", "time [s]", "velocity");
-   window.addSubplot(demonstration);
- 
+   window.addSubplot(demonstration(0), "y demo");
+    window.addSubplot(demonstration(1), "z demo");
+
   //DEFINE AN OPTIMIZATION ALGORITHM AND SOLVE
   //==========================================
 
