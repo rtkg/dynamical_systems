@@ -5,16 +5,6 @@
 // if not provide a guess for the initial conditions for differential states
 #define FLAG_0 
 
-// NOTE 1: maybe we should define tau as a time varying parameter
-
-// NOTE 2: I think that having a G.A.S. system is NOT useful in the context of this application (to discuss)
-
-// QUESTION 1: What are the results with your parameter estimation algorithm (and what is it)? 
-
-// QUESTION 2: Mixture model of dynamical systems?
-
-// QUESTION 3: How about coupling (later on)?
-
 int main(int argc, char **argv)
 {
 
@@ -31,14 +21,13 @@ int main(int argc, char **argv)
   
   // define ACADO variables
   DifferentialState q, dq;
-  Parameter         a, b, tau;
+  Parameter         a(3), b(3);
+  TIME              t;
  
   Grid time_grid = demonstration.getTimePoints();
 
   // define other variables
-  double T_start = time_grid.getFirstTime();  
-  double T_end   = time_grid.getLastTime();  
-  double g       = demonstration.getLastVector()(0);
+  double g = demonstration.getLastVector()(0);
 
 #ifdef FLAG_0
   double  q0 = demonstration.getFirstVector()(0);
@@ -51,40 +40,22 @@ int main(int argc, char **argv)
 
   // define ODE
   DifferentialEquation f_opt;
-  f_opt << dot(q)  == dq/tau;
-  f_opt << dot(dq) == (a*(g-q)-b*dq)/tau;
-  // using (a*(b*(g-q)-dq))/tau seems to be a bad idea (of course a & b have different meaning) - lets discuss tomorrow
-
+  f_opt << dot(q)  == dq;
+  f_opt << dot(dq) == (a(0)*pow(t,2) + a(1)*t + a(2))*(g-q) - (b(0)*pow(t,2) + b(1)*t + b(2))*dq;
+ 
   Function h;
   h << q;
   h << dq;
 
   Matrix Q(2,2);
   Q.setIdentity();
-  //Q(0,0) = 5;
-  
-  /*
-  MatrixVariablesGrid Q(2,2,time_grid);
-  Matrix I(2,2); I.setIdentity();
-  Q.setAllMatrices(I);
-  
-  Matrix Qi(2,2); Qi.setIdentity(); Qi(0,0) = 100; Qi(1,1) = 100;
-  
-  // the indexes depend on the discretization
-  Q.setMatrix(9, Qi);
-  Q.setMatrix(15, Qi);
-  Q.setMatrix(25, Qi);
-  */
 
   // define OCP
   OCP ocp(time_grid);
-  //ocp.minimizeLSQ(h,demonstration);
   ocp.minimizeLSQ(Q,h,demonstration);
   
   // constraints
   ocp.subjectTo(f_opt);
-  ocp.subjectTo( 1 <= tau <= T_end ); // <-- we should definitely impose constraints on tau (what bounds are reasonable?)
-  //ocp.subjectTo(tau == 1);
 
 #ifdef FLAG_0
   cout << endl << " AT_START:   q = q0, dq = dq0" << endl << endl;
@@ -93,7 +64,6 @@ int main(int argc, char **argv)
 #endif
 
   // define optimization algorithm
-  //ParameterEstimationAlgorithm algorithm(ocp); // quite a bit slower (but I don't know why)
   OptimizationAlgorithm algorithm(ocp);
 
   // define some useful options
@@ -127,14 +97,13 @@ int main(int argc, char **argv)
   // simulate
   // ---------------------------------------------------
 
-  double a_sol = p_sol(0);
-  double b_sol = p_sol(1);
-  double tau_sol = p_sol(2);
+  double a_sol[3] = {p_sol(0),p_sol(1),p_sol(2)};
+  double b_sol[3] = {p_sol(3),p_sol(4),p_sol(5)};
 
   DifferentialEquation f_sim;
-  f_sim << dot(q)  == dq/tau_sol;
-  f_sim << dot(dq) == (a_sol*(g-q)-b_sol*dq)/tau_sol;
-  
+  f_sim << dot(q)  == dq;
+  f_sim << dot(dq) == (a_sol[0]*pow(t,2) + a_sol[1]*t + a_sol[2])*(g-q) - (b_sol[0]*pow(t,2) + b_sol[1]*t + b_sol[2])*dq;
+ 
   IntegratorRK78 integrator( f_sim );  
   integrator.set( INTEGRATOR_PRINTLEVEL, NONE );
   integrator.set( INTEGRATOR_TOLERANCE, 1.0e-6 );
@@ -150,31 +119,6 @@ int main(int argc, char **argv)
   integrator.getX( states_sim );
   
   states_sim.printToFile( "../demonstrations/states_sim.txt","",PS_PLAIN );
-
-  // ----------------------------------------------------
-  // simulate suing a ACADO::Process
-  // here we can have control input
-  // ----------------------------------------------------
-
-  OutputFcn out;
-  out << q;
-  out << dq;
-  
-  DynamicSystem DynSys( f_opt, out );
-  Process process;
-  process.setDynamicSystem( DynSys, INT_RK78 );
-  process.set( ABSOLUTE_TOLERANCE,1.0e-8 );
-  process.initializeStartValues( x0 );
-  process.set( PLOT_RESOLUTION,HIGH );
-
-  process.run(T_start, T_end, emptyConstVector, p_sol);	 
-
-  VariablesGrid y;
-  process.getY( y );
-
-  y.printToFile( "../demonstrations/states_sim1.txt","",PS_PLAIN );
-  // ----------------------------------------------------
-  
 
   return 0;
 }
